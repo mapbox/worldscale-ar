@@ -21,7 +21,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>MGLMapboxAccessToken</key>
-	<string>pk.eyJ1IjoibW9yZ2FuZS1zYW50b3MiLCJhIjoiY2pjOWZiYzU5MGJidzJ3czF4OXlxNHJydCJ9.XpohKk34sPoGidFEK_AAsg</string>
+	<string>ENTER YOUR ACCESS TOKEN HERE</string>
 	<key>NSCameraUsageDescription</key>
 	<string>We use the camera to bring you Augmented Reality experiences.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
