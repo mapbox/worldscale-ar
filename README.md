@@ -2,7 +2,12 @@
 
 ### Overview
 
-A world-scale AR demo that shows the location of various national parks and forests in the United States.
+A world-scale AR demo that shows the location of various national parks and forests in the United States, as well as a 3D horizon and a 2D map for troubleshooting.
+
+<div align="center">
+<img src="example-1.PNG" alt="Example of app running on iPhone" width="256">
+<img src="example-2.PNG" alt="Example of app running on iPhone" width="256">
+</div>
 
 ### Installation
 
