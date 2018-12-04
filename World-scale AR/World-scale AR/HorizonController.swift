@@ -16,15 +16,6 @@ import UIKit
 
 class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerDelegate, MGLMapViewDelegate {
     
-    // MARK: - UI button states
-    
-    enum ButtonState: Int {
-        case calibrate,
-        confirm,
-        enableArMode,
-        disableArMode
-    }
-    
     // MARK: - Variables
     
     // Scenes
@@ -38,18 +29,8 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
     var deviceLocation: CLLocation!
     var checkForUpdates: Bool!
     
-    // Mapbox terrain object
-    var terrainNode: TerrainNode?
-    var showHorizon: Bool!
-    
     // UI
-    var instructions: UIView!
-    var instructionsText: UILabel!
     var visualEffectView: UIVisualEffectView!
-    var buttons: UIView!
-    var arButton: UIButton!
-    var focusButton: UIButton!
-    var arButtonState: ButtonState!
     var geometryNode: SCNNode!
     var focusTarget: SCNNode!
     var motionManager: CMMotionManager!
@@ -58,6 +39,9 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
     var poiLocations: [CLLocation]!
     var poiLocationNames: [String]!
     var poiNodes: [SCNNode]!
+    
+    // Mapbox terrain object
+    var terrainNode: TerrainNode?
     
     // Gestures
     var scenePanGesture: UIPanGestureRecognizer!
@@ -68,18 +52,12 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
         super.viewDidLoad()
         self.view.addSubview(sceneView)
         
-        showLoadingScene()
-        
         setupScene()
-        setupGestures()
-        setupInstructionLabel()
-        setupButtons()
         
         addFocusTarget()
         add3dObject()
         
         checkForUpdates = true
-        showHorizon = true // toggle horizon on and off
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -115,89 +93,52 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
         scene.rootNode.light?.type = SCNLight.LightType.ambient
     }
     
-    func setupGestures() {
-        scenePanGesture = UIPanGestureRecognizer(target: self, action: #selector(self.handlePan(_:)))
-        sceneView.addGestureRecognizer(scenePanGesture)
-    }
-    
-    func setupInstructionLabel() {
-        instructions = UIView()
-        
-        // Create intructions label
-        let instructionsTextString = "Does this look right?"
-        instructionsText = UILabel()
-        instructionsText.backgroundColor = UIColor.clear
-        instructionsText.clipsToBounds = true
-        instructionsText.layer.borderColor = UIColor.mapboxGrayDark.cgColor
-        instructionsText.layer.borderWidth = 1.0
-        instructionsText.layer.cornerRadius = 20.0
-        instructionsText.textAlignment = .center
-        instructionsText.textColor = UIColor.mapboxGrayDark
-        
-        // Blur background
-        visualEffectView = UIVisualEffectView(effect: UIBlurEffect(style: .light))
-        visualEffectView.layer.cornerRadius = instructionsText.layer.cornerRadius
-        visualEffectView.clipsToBounds = true
-        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Size label appropriately
-        sizeLabelToText(label: instructionsText, textString: instructionsTextString)
-        
-        instructions.addSubview(visualEffectView)
-        instructions.addSubview(instructionsText)
-        
-        self.view.addSubview(instructions)
-    }
-    
-    func setupButtons() {
-        buttons = UIView()
-        let buttonsWidth = self.view.frame.width
-        let buttonsHeight = CGFloat(100.0)
-        let yPosition = self.view.frame.height - buttonsHeight
-        buttons.frame = CGRect(x: 0, y: yPosition, width: buttonsWidth, height: buttonsHeight)
-        
-        let leftButton = createButton(buttonStyle: .calibrate)
-        let rightButton = createButton(buttonStyle: .confirm)
-        
-        buttons.addSubview(leftButton)
-        buttons.addSubview(rightButton)
-        
-        self.view.addSubview(buttons)
-    }
-    
-    // MARK: - Loading and calibration scene functions
-    
-    func showLoadingScene() {
-        loadingScene = UIView()
-        loadingScene.backgroundColor = UIColor.init(red: (230.0/255.0), green: (228.0/255.0), blue: (224.0/255.0), alpha: 1.0)
-        loadingScene.frame = self.view.bounds
-        self.view.addSubview(loadingScene)
-    }
-    
     // Show 2D map for calibration and context
     func show2dMap() {
         let url = URL(string: "mapbox://styles/mapbox/streets-v10")
-        mapView = MGLMapView(frame: view.bounds, styleURL: url)
+        mapView = MGLMapView(frame: CGRect(x: 0, y: view.bounds.height - 200.0, width: view.bounds.width, height: 200.0), styleURL: url)
+        mapView.autoresizesSubviews = true
         mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        mapView.setCenter(CLLocationCoordinate2D(latitude: deviceLocation.coordinate.latitude, longitude: deviceLocation.coordinate.longitude), zoomLevel: 3, animated: false)
+        mapView.setCenter(CLLocationCoordinate2D(latitude: deviceLocation.coordinate.latitude, longitude: deviceLocation.coordinate.longitude), zoomLevel: 17, animated: false)
         mapView.showsUserLocation = true
         mapView.showsUserHeadingIndicator = true
         
-        self.view.addSubview(mapView)
+        let camera = MGLMapCamera(lookingAtCenter: mapView.centerCoordinate, altitude: 200, pitch: 45, heading: 0)
+        mapView.camera = camera
         
-        self.view.bringSubviewToFront(instructions)
-        self.view.bringSubviewToFront(buttons)
+        self.view.addSubview(mapView)
         
         setupPOIs()
     }
     
-    // Refresh map view if location isn't correct
-    func refresh2dMap() {
-        mapView.removeFromSuperview()
-        terrainNode?.removeFromParentNode()
+    func createHorizon(currentDeviceLocation: CLLocation) {
+        let coordinates = calculateHorizonCoordinates(currentDeviceLocation: currentDeviceLocation) // [maxLatitude, minLatitude, maxLongitude, minLongitude]
+        let maxLatitude = coordinates[0]
+        let minLatitude = coordinates[1]
+        let maxLongitude = coordinates[2]
+        let minLongitude = coordinates[3]
         
-        // Recreate mapView and terrainNode based on new device location
-        checkForUpdates = true
+        terrainNode = TerrainNode(minLat: minLatitude, maxLat: maxLatitude,
+                                  minLon: minLongitude, maxLon: maxLongitude)
+        
+        if let terrainNode = terrainNode {
+            terrainNode.scale = SCNVector3(2, 2, 2)
+            terrainNode.position = SCNVector3(0, -3, 0)
+            terrainNode.geometry?.setTransparency(0.0)
+            sceneView.pointOfView?.addChildNode(terrainNode)
+//            scene.rootNode.addChildNode(terrainNode)
+            
+            terrainNode.fetchTerrainHeights(minWallHeight: 0.1, enableDynamicShadows: true, progress: { progress, total in
+            }, completion: {_ in
+                let poiLocation = CLLocation(latitude: 37.791123, longitude: -122.396598)
+                let sphere = SCNSphere(radius: 1.0)
+                let sphereNode = SCNNode(geometry: sphere)
+                sphereNode.geometry?.materials.first?.diffuse.contents = UIColor.red
+                sphereNode.position = terrainNode.positionForLocation(poiLocation)
+                terrainNode.addChildNode(sphereNode)
+                NSLog("Terrain load complete")
+            })
+        }
     }
     
     // MARK: - POI helper functions
@@ -205,12 +146,11 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
     // For this example, the POIs center around San Francisco. You can customize this list
     // with any number of different POIs.
     func setupPOIs() {
-        let poiLocation1 = CLLocation(latitude: 44.4280, longitude: -110.5885) // Yellostone, Wyoming
-        let poiLocation2 = CLLocation(latitude: 33.8734, longitude: -115.9010) // Joshua Tree, California
-        let poiLocation3 = CLLocation(latitude: 45.3736, longitude: -121.6960) // Mt. Hood, Oregon
+        // 37.791123, -122.396598
+        let poiLocation1 = CLLocation(latitude: 37.791123, longitude: -122.396598) // 50 Beale Street
         
-        poiLocations = [poiLocation1, poiLocation2, poiLocation3]
-        poiLocationNames = ["🌲 Yellowstone", "🌵 Joshua Tree", "🗻 Mt. Hood"]
+        poiLocations = [poiLocation1]
+        poiLocationNames = ["50 Beale"]
         poiNodes = []
         
         // Create label for each POI
@@ -231,7 +171,7 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
             poiAnnotation.title = poiLocationNames[index]
             mapView.addAnnotation(poiAnnotation)
             
-            scene.rootNode.addChildNode(poiNode)
+//            scene.rootNode.addChildNode(poiNode)
         }
     }
     
@@ -280,11 +220,8 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
                 if manager.location != nil {
                     checkForUpdates = false
                     deviceLocation = manager.location!
+                    createHorizon(currentDeviceLocation: deviceLocation)
                     show2dMap()
-                    
-                    if showHorizon {
-                        createHorizon(currentDeviceLocation: deviceLocation)
-                    }
                     
                     for (index, poi) in poiLocations.enumerated() {
                         let transform = transformMatrix(originLocation: deviceLocation, destinationLocation: poi)
@@ -350,7 +287,7 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
         let deviceAltitudeInMeters = max(currentDeviceLocation.altitude, 2) // assume the device is at least 2 meters off the ground
         
         // Given the device altitude, how far away is the horizon?
-        let distanceToHorizonInKilometers = 3.57 * deviceAltitudeInMeters.squareRoot() // horizon is further away the higher up the device
+        let distanceToHorizonInKilometers = 1 * deviceAltitudeInMeters.squareRoot() // horizon is further away the higher up the device
         
         // Establish starting points for figuring out the distance of 1º latitude/longitude
         let oneDegreeLatitudeInKilometers = 111.0 // on average, 1º latitude roughly equals 111.0 km
@@ -368,43 +305,6 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
         let minLongitude = deviceLongitude - longitudeDegreesToHorizon
         
         return [maxLatitude, minLatitude, maxLongitude, minLongitude]
-    }
-    
-    // Create terrain node that showcases terrain at horizon level
-    func createHorizon(currentDeviceLocation: CLLocation) {
-        let coordinates = calculateHorizonCoordinates(currentDeviceLocation: currentDeviceLocation) // [maxLatitude, minLatitude, maxLongitude, minLongitude]
-        let maxLatitude = coordinates[0]
-        let minLatitude = coordinates[1]
-        let maxLongitude = coordinates[2]
-        let minLongitude = coordinates[3]
-        
-        terrainNode = TerrainNode(minLat: minLatitude, maxLat: maxLatitude,
-                                  minLon: minLongitude, maxLon: maxLongitude)
-        
-        if let terrainNode = terrainNode {
-            terrainNode.scale = SCNVector3(0.01, 0.01, 0.01)
-            terrainNode.position = SCNVector3(0, -3, 0)
-            terrainNode.geometry?.setFillMode(.lines)
-            sceneView.pointOfView?.addChildNode(terrainNode)
-            
-            terrainNode.fetchTerrainHeights(minWallHeight: 0.1, enableDynamicShadows: true, progress: { progress, total in
-            }, completion: {
-                NSLog("Terrain load complete")
-            })
-        }
-    }
-    
-    // MARK: - Gesture functions
-    
-    // Pan up or down to move horizon line
-    @objc func handlePan(_ gestureRecognizer: UIPanGestureRecognizer) {
-        if gestureRecognizer.state == .began || gestureRecognizer.state == .changed {
-            let translation = gestureRecognizer.translation(in: self.view)
-            let currentY = CGFloat((terrainNode?.position.y)!)
-            var yTranslation = currentY - translation.y
-            yTranslation = max(-50, min(0, yTranslation)) // -50 < yTranslation < 0
-            terrainNode?.position = SCNVector3(0, yTranslation, 0)
-        }
     }
     
     // MARK: - UI helper functions
@@ -456,155 +356,15 @@ class HorizonController: UIViewController, ARSCNViewDelegate, CLLocationManagerD
         }
         
         sceneView.pointOfView?.addChildNode(geometryNode)
-    }
-    
-    // MARK: - Button styles and interactions
-    
-    // Create general calibration and confirmation buttons
-    func createButton(buttonStyle: ButtonState) -> UIButton {
-        let button = UIButton(type: UIButton.ButtonType.system)
-        var buttonColor: UIColor
-        var buttonText: String
         
-        let padding: CGFloat = 20
-        var xPostion = padding
-        let yPostion: CGFloat = 10
-        let buttonWidth: CGFloat = (self.view.frame.maxX - (3 * padding)) / 2
-        let buttonHeight: CGFloat = 45
-        
-        switch buttonStyle {
-        case .calibrate:
-            buttonColor = UIColor.mapboxGray
-            button.tag = ButtonState.calibrate.rawValue
-            buttonText = "No"
-            button.addTarget(self, action: #selector(self.buttonDown(_:)), for: .touchDown)
-        default:
-            buttonColor = UIColor.mapboxBlue
-            button.tag = ButtonState.confirm.rawValue
-            buttonText = "Yes"
-            xPostion = buttonWidth + (2 * padding)
-            button.addTarget(self, action: #selector(self.buttonDown(_:)), for: .touchDown)
-        }
-        
-        button.backgroundColor = buttonColor
-        button.frame = CGRect(x: xPostion, y: yPostion, width: buttonWidth, height: buttonHeight)
-        button.layer.cornerRadius = 20
-        button.setTitle(buttonText, for: UIControl.State.normal)
-        button.setTitleColor(UIColor.white, for: UIControl.State.normal)
-        button.tintColor = UIColor.black
-        
-        return button
-    }
-    
-    // Create button to enable AR mode
-    func setupArButton() {
-        if arButton == nil {
-            arButton = UIButton(type: UIButton.ButtonType.system)
-            arButton.frame = CGRect.zero
-            arButton.backgroundColor = UIColor.mapboxBlue
-            arButton.tintColor = UIColor.white
-            arButton.layer.cornerRadius = 20
-            arButton.tag = ButtonState.enableArMode.rawValue
-            
-            self.view.addSubview(arButton)
-            arButton.translatesAutoresizingMaskIntoConstraints = false
-            let w = arButton.widthAnchor.constraint(equalToConstant: self.view.bounds.height * 0.1)
-            w.isActive = true
-            w.identifier = "arButtonWidth"
-            arButton.heightAnchor.constraint(equalToConstant: self.view.bounds.height * 0.1).isActive = true
-            arButton.centerXAnchor.constraint(equalTo: self.view.centerXAnchor).isActive = true
-            arButton.bottomAnchor.constraint(equalTo: self.view.bottomAnchor, constant: self.view.bounds.height * -0.1).isActive = true
-            arButton.addTarget(self, action: #selector(self.buttonDown(_:)), for: .touchDown)
-        }
-        
-        let constraint = self.arButton.constraint(withIdentifier: "arButtonWidth")
-        constraint?.constant = self.view.bounds.height * 0.1
-        arButton.setTitle(nil, for: .normal)
-        UIView.animate(withDuration: 0.1, animations: {
-            self.arButton.layoutIfNeeded()
-        }, completion: { (completed) in
-            let arIcon = UIImage(named: "art.scnassets/ar-icon.png")
-            self.arButton.setImage(arIcon, for: .normal)
+        let wait = SCNAction.wait(duration: 4.0)
+        let fadeOut = SCNAction.fadeOut(duration: 0.5)
+        geometryNode.runAction(wait, completionHandler: {
+            self.geometryNode.runAction(fadeOut)
         })
     }
-    
-    // Create button to disable AR mode
-    func setupFocusButton() {
-        focusButton = UIButton(type: UIButton.ButtonType.system)
-        focusButton.frame = CGRect.zero
-        focusButton.backgroundColor = UIColor.clear
-        
-        let focusIcon = UIImage(named: "art.scnassets/focus-icon.png")
-        focusButton.setImage(focusIcon, for: .normal)
-        focusButton.tintColor = UIColor.black
-        focusButton.layer.cornerRadius = 20
-        focusButton.tag = ButtonState.disableArMode.rawValue
-        focusButton.alpha = 0.0
-        
-        self.view.addSubview(focusButton)
-        focusButton.translatesAutoresizingMaskIntoConstraints = false
-        focusButton.widthAnchor.constraint(equalToConstant: self.view.bounds.height * 0.1).isActive = true
-        focusButton.heightAnchor.constraint(equalToConstant: self.view.bounds.height * 0.1).isActive = true
-        focusButton.centerXAnchor.constraint(equalTo: self.view.centerXAnchor).isActive = true
-        focusButton.bottomAnchor.constraint(equalTo: self.view.bottomAnchor, constant: self.view.bounds.height * -0.1).isActive = true
-        
-        focusButton.addBlurEffect(style: .regular).alpha = 0.7
-        focusButton.addTarget(self, action: #selector(self.buttonDown(_:)), for: .touchDown)
-    }
-    
-    // Toggle AR mode on and off
-    @objc private func buttonDown(_ sender: UIButton!) {
-        switch sender.tag {
-            
-        // Calibrate location
-        case ButtonState.calibrate.rawValue:
-            UIView.animate(withDuration: 0.3, animations: {
-                self.instructions.alpha = 0.0
-            })
-            
-            refresh2dMap()
-            
-            UIView.animate(withDuration: 0.3, animations: {
-                self.instructions.alpha = 1.0
-            })
-            
-        // Confirm location
-        case ButtonState.confirm.rawValue:
-            buttons.isHidden = true
-            instructions.isHidden = true
-            setupArButton()
-            setupFocusButton()
-            self.view.bringSubviewToFront(arButton)
-            self.loadingScene.alpha = 0.0
-            
-        // Enter AR mode
-        case ButtonState.enableArMode.rawValue:
-            UIView.animate(withDuration: 0.3, animations: {
-                self.arButton.alpha = 0.0
-                self.focusButton.alpha = 1.0
-                self.mapView.alpha = 0.0
-            })
-            
-            let wait = SCNAction.wait(duration: 4.0)
-            let fadeOut = SCNAction.fadeOut(duration: 0.5)
-            self.geometryNode.runAction(wait, completionHandler: {
-                self.geometryNode.runAction(fadeOut)
-            })
-            
-        // Leave AR mode
-        case ButtonState.disableArMode.rawValue:
-            UIView.animate(withDuration: 0.3, animations: {
-                self.arButton.alpha = 1.0
-                self.focusButton.alpha = 0.0
-                self.mapView.alpha = 1.0
-            })
-            
-        // Unknown button state
-        default:
-            print("Unknown button state")
-        }
-    }
 }
+
 
 // MARK: - Extend matrix_float4x4 for worldscale placement
 
